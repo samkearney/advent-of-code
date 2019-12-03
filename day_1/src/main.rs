@@ -28,7 +28,7 @@ mod tests {
     }
 }
 
-fn main() -> std::io::Result<()> {
+fn main() {
     // Create a path to the desired file
     let path = Path::new("input.txt");
     let display = path.display();
@@ -37,22 +37,22 @@ fn main() -> std::io::Result<()> {
     let file = match File::open(&path) {
         // The `description` method of `io::Error` returns a string that
         // describes the error
-        Err(why) => panic!("couldn't open {}: {}", display,
-                                                   why.description()),
+        Err(why) => panic!("couldn't open {}: {}", display, why.description()),
         Ok(file) => file,
     };
 
-    // Read the file contents into a string, returns `io::Result<usize>`
-    let reader = BufReader::new(file);
-
     let mut sum : i32 = 0;
-    for line in reader.lines() {
-        let mass : i32 = line?.parse().unwrap();
+
+    // Use a BufReader to read the file line-by-line.
+    let reader = BufReader::new(file);
+    for line_result in reader.lines() {
+        let line = match line_result {
+            Err(why) => panic!("Error reading line from input file: {}", why.description()),
+            Ok(line) => line
+        };
+        let mass : i32 = line.parse().unwrap();
         sum += calc_fuel(mass);
     }
 
     println!("Sum is {}", sum);
-
-    // `file` goes out of scope, and the "input.txt" file gets closed
-    Ok(())
 }
