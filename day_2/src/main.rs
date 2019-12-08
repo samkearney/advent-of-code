@@ -46,6 +46,25 @@ fn run_computer(input: &mut Vec<String>) {
     }
 }
 
+fn try_input_pair(input_1: u32, input_2: u32, initial_program: &Vec<String>) -> u32 {
+    let mut program_copy = initial_program.clone();
+    program_copy[1] = input_1.to_string();
+    program_copy[2] = input_2.to_string();
+    run_computer(&mut program_copy);
+    return program_copy[0].parse::<u32>().unwrap();
+}
+
+fn determine_inputs_for_output(output: u32, initial_program: &Vec<String>) -> Option<(u32, u32)> {
+    for input_1 in 0..99 {
+        for input_2 in 0..99 {
+            if try_input_pair(input_1, input_2, initial_program) == output {
+                return Some((input_1, input_2));
+            }
+        }
+    }
+    None
+}
+
 fn main() {
     // Open the path in read-only mode, returns `io::Result<File>`
     let mut file = match File::open("input.txt") {
@@ -57,8 +76,13 @@ fn main() {
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    let mut op_list : Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
-    run_computer(&mut op_list);
+    let op_list : Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
 
-    println!("Value at position 0: {}", op_list[0])
+    match determine_inputs_for_output(19690720, &op_list) {
+        Some((input_1, input_2)) => {
+            println!("Input 1: {} Input 2: {}", input_1, input_2);
+            println!("Solution: {}", 100 * input_1 + input_2);
+        },
+        None => println!("No valid inputs found for result {}", 19690720)
+    };
 }
