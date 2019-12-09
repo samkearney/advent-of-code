@@ -18,11 +18,12 @@ impl Point {
 struct Segment {
     p1: Point,
     p2: Point,
+    starting_metric: u32
 }
 
 impl Segment {
-    fn new(p1: Point, p2: Point) -> Self {
-        Segment { p1: p1, p2: p2 }
+    fn new(p1: Point, p2: Point, starting_metric: u32) -> Self {
+        Segment { p1: p1, p2: p2, starting_metric: starting_metric }
     }
 
     fn contains_x(&self, x: i32) -> bool {
@@ -43,36 +44,49 @@ impl Segment {
 }
 
 fn get_segments(line: &str) -> (Vec<Segment>, Vec<Segment>) {
+    let mut current_distance : u32 = 0;
     let mut current_location = Point::new(0, 0);
     let mut horizontal_segments = Vec::new();
     let mut vertical_segments = Vec::new();
 
     for move_instruction in line.split(',') {
         let direction = move_instruction.chars().next().unwrap();
-        let distance = &move_instruction[1..].parse::<i32>().unwrap();
+        let distance = move_instruction[1..].parse::<i32>().unwrap();
         match direction { 
             'L' => {
                 horizontal_segments.push(
                         Segment::new(current_location.clone(),
-                                     Point::new(current_location.x - distance, current_location.y)));
+                                     Point::new(current_location.x - distance, current_location.y),
+                                     current_distance)
+                );
+                current_distance += distance as u32;
                 current_location.x -= distance;
              },
             'R' => {
                 horizontal_segments.push(
                         Segment::new(current_location.clone(),
-                                     Point::new(current_location.x + distance, current_location.y)));
+                                     Point::new(current_location.x + distance, current_location.y),
+                                     current_distance)
+                );
+                current_distance += distance as u32;
                 current_location.x += distance;
              },
             'U' => {
                 vertical_segments.push(
                         Segment::new(current_location.clone(),
-                                     Point::new(current_location.x, current_location.y + distance)));
+                                     Point::new(current_location.x, current_location.y + distance),
+                                     current_distance)
+                );
+                current_distance += distance as u32;
                 current_location.y += distance;
             },
             'D' => {
                 vertical_segments.push(
                         Segment::new(current_location.clone(),
-                                     Point::new(current_location.x, current_location.y - distance)));
+                                     Point::new(current_location.x, current_location.y - distance),
+                                     current_distance)
+                );
+                current_distance += distance as u32;
                 current_location.y -= distance;
             },
              _ => panic!("AAA")
@@ -88,9 +102,9 @@ fn get_intersection_distances(horizontal_segments: &Vec<Segment>, vertical_segme
     for horizontal_seg in horizontal_segments {
         for vertical_seg in vertical_segments {
             if horizontal_seg.contains_x(vertical_seg.p1.x) && vertical_seg.contains_y(horizontal_seg.p1.y) {
-                let x = i32::abs(vertical_seg.p1.x) as u32;
-                let y = i32::abs(horizontal_seg.p1.y) as u32;
-                distances.push(x + y);
+                let x = i32::abs(horizontal_seg.p1.x - vertical_seg.p1.x) as u32;
+                let y = i32::abs(vertical_seg.p1.y - horizontal_seg.p1.y) as u32;
+                distances.push(horizontal_seg.starting_metric + vertical_seg.starting_metric + x + y);
             }
         }
     }
