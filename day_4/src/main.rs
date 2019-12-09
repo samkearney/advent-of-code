@@ -4,7 +4,12 @@ fn password_is_valid(password: &[i32; 6]) -> bool
     let mut found_double = false;
     for index in 1..6 {
         if password[index] < password[index - 1] { return false; }
-        if password[index] == password[index - 1] { found_double = true; }
+        if password[index] == password[index - 1] {
+            if (index == 1 || password[index] != password[index - 2]) &&
+               (index == 5 || password[index] != password[index + 1]) {
+                found_double = true;
+            }
+        }
     }
     found_double
 }
@@ -16,9 +21,13 @@ mod tests {
 
     #[test]
     fn test_password_is_valid() {
-        assert!(password_is_valid(&[1,1,1,1,1,1]));
+        assert!(!password_is_valid(&[1,1,1,1,1,1]));
         assert!(!password_is_valid(&[2,2,3,4,5,0]));
         assert!(!password_is_valid(&[1,2,3,7,8,9]));
+        assert!( password_is_valid(&[1,1,2,2,3,3]));
+        assert!(!password_is_valid(&[1,2,3,4,4,4]));
+        assert!( password_is_valid(&[1,1,1,1,2,2]));
+        assert!( password_is_valid(&[1,1,1,2,2,3]));
     }
 }
 
