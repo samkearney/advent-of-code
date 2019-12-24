@@ -125,7 +125,7 @@ pub fn run_with_custom_io(input: &mut Vec<String>, input_fn: &mut impl FnMut() -
     let mut pos: usize = 0;
     let mut iteration_num: u32 = 0;
     while pos < input.len() {
-        let opcode = Opcode::from_string(&input[pos]);
+        let opcode = Opcode::from_string(&input[pos].trim());
         match opcode.code {
             1 => {
                 let params : Vec<String> = input[pos + 1..pos + 4].to_vec();
