@@ -57,19 +57,19 @@ fn handle_mult(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, progr
     current_pos + 4
 }
 
-fn handle_save(opcode: &Opcode, pos: usize, program: &mut Vec<String>, current_pos: usize) -> usize {
+fn handle_input(opcode: &Opcode, pos: usize, program: &mut Vec<String>, current_pos: usize,
+        input_fn: &mut impl FnMut() -> String) -> usize {
     assert!(opcode.param_1_mode == false, "Write location cannot be immediate");
     assert!(pos < program.len(), "Index out of range!");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
     // parse() and to_string() to make sure we are getting a valid integer
-    program[pos] = input.trim().parse::<i32>().unwrap().to_string();
+    program[pos] = input_fn().parse::<i32>().unwrap().to_string();
     current_pos + 2
 }
 
-fn handle_output(opcode: &Opcode, param: i32, program: &mut Vec<String>, current_pos: usize) -> usize {
+fn handle_output(opcode: &Opcode, param: i32, program: &mut Vec<String>, current_pos: usize,
+        output_fn: &mut impl FnMut(&str)) -> usize {
     let param = if opcode.param_1_mode { param } else { get_positional_param(param, program) };
-    println!("{}", param);
+    output_fn(&param.to_string());
     current_pos + 2
 }
 
@@ -107,7 +107,21 @@ fn handle_equals(opcode: &Opcode, param_1: i32, param_2: i32, result_pos: usize,
     current_pos + 4
 }
 
+fn default_input() -> String {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+
+fn default_output(output: &str) {
+    println!("{}", output);
+}
+
 pub fn run(input: &mut Vec<String>) {
+    run_with_custom_io(input, &mut default_input, &mut default_output);
+}
+
+pub fn run_with_custom_io(input: &mut Vec<String>, input_fn: &mut impl FnMut() -> String, output_fn: &mut impl FnMut(&str)) {
     let mut pos: usize = 0;
     let mut iteration_num: u32 = 0;
     while pos < input.len() {
@@ -124,10 +138,10 @@ pub fn run(input: &mut Vec<String>) {
                                   params[2].parse().unwrap(), input, pos);
             },
             3 => {
-                pos = handle_save(&opcode, input[pos + 1].parse().unwrap(), input, pos);
+                pos = handle_input(&opcode, input[pos + 1].parse().unwrap(), input, pos, input_fn);
             },
             4 => {
-                pos = handle_output(&opcode, input[pos + 1].parse().unwrap(), input, pos);
+                pos = handle_output(&opcode, input[pos + 1].parse().unwrap(), input, pos, output_fn);
             },
             5 => {
                 pos = handle_jump_if_true(&opcode, input[pos + 1].parse().unwrap(), input[pos + 2].parse().unwrap(),

@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 intcode_computer = { version = "0.1.0", path = "../intcode_computer" }
+permutohedron = "0.2.4"
