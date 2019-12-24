@@ -2,13 +2,6 @@ use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 
-#[derive(Default)]
-struct Layer {
-    zero_count : usize,
-    one_count : usize,
-    two_count: usize
-}
-
 fn main() {
     // Open the path in read-only mode, returns `io::Result<File>`
     let mut file = match File::open("input.txt") {
@@ -24,28 +17,23 @@ fn main() {
     const LAYER_SIZE : usize = 25 * 6;
     let num_layers : usize = contents.len() / LAYER_SIZE;
 
-    let mut fewest_zeroes = Layer {
-        zero_count: std::usize::MAX,
-        ..Default::default()
-    };
+    let mut resolved_image : [char; LAYER_SIZE] = ['2'; LAYER_SIZE];
     for i in 0..num_layers {
-        let mut layer : Layer = Default::default();
-        println!("New layer, Counts: {} {} {}", layer.zero_count, layer.one_count, layer.two_count);
+        let mut pos = 0;
         for character in contents[LAYER_SIZE*i..LAYER_SIZE*i + LAYER_SIZE].chars() {
-            if character == '0' {
-                layer.zero_count += 1;
-            } else if character == '1' {
-                layer.one_count += 1;
-            } else if character == '2' {
-                layer.two_count += 1;
+            if resolved_image[pos] == '2' {
+                match character {
+                    '0' => resolved_image[pos] = '0',
+                    '1' => resolved_image[pos] = '1',
+                    _ => ()
+                };
             }
-        }
-        println!("This layer counts: {} {} {}", layer.zero_count, layer.one_count, layer.two_count);
-        if layer.zero_count < fewest_zeroes.zero_count {
-            fewest_zeroes = layer;
-            println!("Fewest zeroes is now: {} {} {}", fewest_zeroes.zero_count, fewest_zeroes.one_count, fewest_zeroes.two_count);
+            pos += 1;
         }
     }
 
-    println!("Answer: {}", fewest_zeroes.one_count * fewest_zeroes.two_count);
+    for row in 0..6 {
+        let row_data : String = resolved_image[row*25..(row + 1)*25].iter().collect();
+        println!("{}", row_data);
+    }
 }
