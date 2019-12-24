@@ -1,8 +1,7 @@
 [package]
-name = "day_5"
+name = "intcode_computer"
 version = "0.1.0"
 authors = ["Sam Kearney <samuelmkearney@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-intcode_computer = { version = "0.1.0", path = "../intcode_computer" }

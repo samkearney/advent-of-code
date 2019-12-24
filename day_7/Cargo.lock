@@ -1,5 +1,5 @@
 [[package]]
-name = "day_5"
+name = "day_7"
 version = "0.1.0"
 dependencies = [
  "intcode_computer 0.1.0",
