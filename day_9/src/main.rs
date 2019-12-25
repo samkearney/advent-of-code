@@ -15,7 +15,7 @@ fn main() {
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    let program: Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
+    let program: Vec<String> = contents.split(',').map(|s| s.trim().to_string()).collect();
 
     intcode_computer::run(program);
 }
