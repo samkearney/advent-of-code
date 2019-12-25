@@ -7,6 +7,7 @@ enum ParameterMode {
     Relative,
 }
 
+#[derive(Debug)]
 struct Opcode {
     code: u32,
     param_1_mode: ParameterMode,
@@ -71,7 +72,16 @@ struct Program {
     relative_base: isize,
 }
 
-fn get_param_value(mode: ParameterMode, param: i32, program: &Program) -> i32 {
+impl Program {
+    fn print_diagnostic(&self, prefix: &str) {
+        println!(
+            "{}: Position: {} Code at position: {} Relative Base: {}",
+            prefix, self.current_pos, self.text[self.current_pos], self.relative_base
+        );
+    }
+}
+
+fn get_param_value(mode: ParameterMode, param: isize, program: &Program) -> isize {
     match mode {
         ParameterMode::Immediate => param,
         ParameterMode::Position => {
@@ -79,47 +89,71 @@ fn get_param_value(mode: ParameterMode, param: i32, program: &Program) -> i32 {
             program.text[param as usize].trim().parse().unwrap()
         }
         ParameterMode::Relative => {
-            let pos = (param as isize + program.relative_base) as usize;
+            let pos = (param + program.relative_base) as usize;
             assert!(pos < program.text.len(), "Index {} out of program range!", param);
             program.text[pos].trim().parse().unwrap()
         }
     }
 }
 
-fn handle_add(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Program) {
-    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
-    assert!(result_pos < program.text.len(), "Index out of range!");
+fn get_write_location(mode: ParameterMode, param: isize, program: &Program) -> usize {
+    match mode {
+        ParameterMode::Immediate => panic!("Write location cannot be immediate!"),
+        ParameterMode::Position => {
+            assert!((param as usize) < program.text.len(), "Index {} out of write range!", param);
+            param as usize
+        }
+        ParameterMode::Relative => {
+            let pos = (param + program.relative_base) as usize;
+            assert!(pos < program.text.len(), "Index {} out of write range!", param);
+            pos
+        }
+    }
+}
+
+fn handle_add(
+    opcode: &Opcode,
+    a_pos: isize,
+    b_pos: isize,
+    result_pos: isize,
+    program: &mut Program,
+) {
     let operand_1 = get_param_value(opcode.param_1_mode, a_pos, program);
     let operand_2 = get_param_value(opcode.param_2_mode, b_pos, program);
+    let result_pos = get_write_location(opcode.param_3_mode, result_pos, program);
     program.text[result_pos] = (operand_1 + operand_2).to_string();
     program.current_pos += 4;
 }
 
-fn handle_mult(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Program) {
-    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
-    assert!(result_pos < program.text.len(), "Index out of range!");
+fn handle_mult(
+    opcode: &Opcode,
+    a_pos: isize,
+    b_pos: isize,
+    result_pos: isize,
+    program: &mut Program,
+) {
     let operand_1 = get_param_value(opcode.param_1_mode, a_pos, program);
     let operand_2 = get_param_value(opcode.param_2_mode, b_pos, program);
+    let result_pos = get_write_location(opcode.param_3_mode, result_pos, program);
     program.text[result_pos] = (operand_1 * operand_2).to_string();
     program.current_pos += 4;
 }
 
 fn handle_input(
     opcode: &Opcode,
-    pos: usize,
+    pos: isize,
     program: &mut Program,
     input_fn: &mut impl FnMut() -> String,
 ) {
-    assert!(opcode.param_1_mode != ParameterMode::Immediate, "Write location cannot be immediate");
-    assert!(pos < program.text.len(), "Index out of range!");
+    let pos = get_write_location(opcode.param_1_mode, pos, program);
     // parse() and to_string() to make sure we are getting a valid integer
-    program.text[pos] = input_fn().parse::<i32>().unwrap().to_string();
+    program.text[pos] = input_fn().parse::<isize>().unwrap().to_string();
     program.current_pos += 2;
 }
 
 fn handle_output(
     opcode: &Opcode,
-    param: i32,
+    param: isize,
     program: &mut Program,
     output_fn: &mut impl FnMut(&str),
 ) {
@@ -128,7 +162,7 @@ fn handle_output(
     program.current_pos += 2;
 }
 
-fn handle_jump_if_true(opcode: &Opcode, param: i32, pos: i32, program: &mut Program) {
+fn handle_jump_if_true(opcode: &Opcode, param: isize, pos: isize, program: &mut Program) {
     let param = get_param_value(opcode.param_1_mode, param, program);
     let pos = get_param_value(opcode.param_2_mode, pos, program);
     if param != 0 {
@@ -138,7 +172,7 @@ fn handle_jump_if_true(opcode: &Opcode, param: i32, pos: i32, program: &mut Prog
     }
 }
 
-fn handle_jump_if_false(opcode: &Opcode, param: i32, pos: i32, program: &mut Program) {
+fn handle_jump_if_false(opcode: &Opcode, param: isize, pos: isize, program: &mut Program) {
     let param = get_param_value(opcode.param_1_mode, param, program);
     let pos = get_param_value(opcode.param_2_mode, pos, program);
     if param == 0 {
@@ -150,15 +184,14 @@ fn handle_jump_if_false(opcode: &Opcode, param: i32, pos: i32, program: &mut Pro
 
 fn handle_less_than(
     opcode: &Opcode,
-    param_1: i32,
-    param_2: i32,
-    result_pos: usize,
+    param_1: isize,
+    param_2: isize,
+    result_pos: isize,
     program: &mut Program,
 ) {
-    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
-    assert!(result_pos < program.text.len(), "Index out of range!");
     let param_1 = get_param_value(opcode.param_1_mode, param_1, program);
     let param_2 = get_param_value(opcode.param_2_mode, param_2, program);
+    let result_pos = get_write_location(opcode.param_3_mode, result_pos, program);
     program.text[result_pos] = if param_1 < param_2 {
         "1".to_string()
     } else {
@@ -169,21 +202,26 @@ fn handle_less_than(
 
 fn handle_equals(
     opcode: &Opcode,
-    param_1: i32,
-    param_2: i32,
-    result_pos: usize,
+    param_1: isize,
+    param_2: isize,
+    result_pos: isize,
     program: &mut Program,
 ) {
-    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
-    assert!(result_pos < program.text.len(), "Index out of range!");
     let param_1 = get_param_value(opcode.param_1_mode, param_1, program);
     let param_2 = get_param_value(opcode.param_2_mode, param_2, program);
+    let result_pos = get_write_location(opcode.param_3_mode, result_pos, program);
     program.text[result_pos] = if param_1 == param_2 {
         "1".to_string()
     } else {
         "0".to_string()
     };
     program.current_pos += 4
+}
+
+fn handle_adjust_relative_base(opcode: &Opcode, param: isize, program: &mut Program) {
+    let resolved_param = get_param_value(opcode.param_1_mode, param, program);
+    program.relative_base += resolved_param;
+    program.current_pos += 2;
 }
 
 fn default_input() -> String {
@@ -209,8 +247,13 @@ pub fn run_with_custom_io(
         text: input,
         ..Default::default()
     };
+
+    let mut empty_memory = vec!["0".to_string(); program.text.len() * 3];
+    program.text.append(&mut empty_memory);
+
     let mut iteration_num: u32 = 0;
     loop {
+        // program.print_diagnostic(&iteration_num.to_string());
         let opcode = Opcode::from_string(&program.text[program.current_pos].trim());
         match opcode.code {
             1 => {
@@ -279,6 +322,11 @@ pub fn run_with_custom_io(
                 program.text[program.current_pos + 1].parse().unwrap(),
                 program.text[program.current_pos + 2].parse().unwrap(),
                 program.text[program.current_pos + 3].parse().unwrap(),
+                &mut program,
+            ),
+            9 => handle_adjust_relative_base(
+                &opcode,
+                program.text[program.current_pos + 1].parse().unwrap(),
                 &mut program,
             ),
             99 => return,
