@@ -15,7 +15,7 @@ fn main() {
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    let mut op_list : Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
+    let op_list: Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
 
-    intcode_computer::run(&mut op_list);
+    intcode_computer::run(op_list);
 }

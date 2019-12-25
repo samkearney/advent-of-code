@@ -1,110 +1,189 @@
 use std::io;
 
-#[derive(Default)]
+#[derive(PartialEq, Copy, Clone, Debug)]
+enum ParameterMode {
+    Position,
+    Immediate,
+    Relative,
+}
+
 struct Opcode {
     code: u32,
-    param_1_mode: bool,
-    param_2_mode: bool,
-    param_3_mode: bool
+    param_1_mode: ParameterMode,
+    param_2_mode: ParameterMode,
+    param_3_mode: ParameterMode,
+}
+
+impl Default for Opcode {
+    fn default() -> Self {
+        Self {
+            code: 0,
+            param_1_mode: ParameterMode::Position,
+            param_2_mode: ParameterMode::Position,
+            param_3_mode: ParameterMode::Position,
+        }
+    }
+}
+
+fn decode_parameter_mode(encoded: char) -> ParameterMode {
+    match encoded.to_digit(10).unwrap() {
+        0 => ParameterMode::Position,
+        1 => ParameterMode::Immediate,
+        2 => ParameterMode::Relative,
+        _ => panic!("Bad parameter mode {}!", encoded),
+    }
 }
 
 impl Opcode {
     fn from_string(string: &str) -> Opcode {
-        let code_val = if string.len() == 1 { string.parse().unwrap() } else { string[string.len()-2..].parse().unwrap() };
+        let code_val = if string.len() == 1 {
+            string.parse().unwrap()
+        } else {
+            string[string.len() - 2..].parse().unwrap()
+        };
         let mut result = Opcode {
-            code: code_val, ..Default::default()
+            code: code_val,
+            ..Default::default()
         };
         if string.len() > 2 {
             let mut iter = string.chars().rev().skip(2);
             match iter.next() {
-                Some(mode) => result.param_1_mode = if mode.to_digit(10).unwrap() == 1 { true } else { false },
-                None => return result
+                Some(mode) => result.param_1_mode = decode_parameter_mode(mode),
+                None => return result,
             }
             match iter.next() {
-                Some(mode) => result.param_2_mode = if mode.to_digit(10).unwrap() == 1 { true } else { false },
-                None => return result
+                Some(mode) => result.param_2_mode = decode_parameter_mode(mode),
+                None => return result,
             }
             match iter.next() {
-                Some(mode) => result.param_3_mode = if mode.to_digit(10).unwrap() == 1 { true } else { false },
-                None => return result
+                Some(mode) => result.param_3_mode = decode_parameter_mode(mode),
+                None => return result,
             }
         }
         result
     }
 }
 
-fn get_positional_param(pos: i32, program: &Vec<String>) -> i32 {
-    assert!((pos as usize) < program.len(), "Index out of range!");
-    program[pos as usize].trim().parse::<i32>().unwrap()
+#[derive(Default)]
+struct Program {
+    text: Vec<String>,
+    current_pos: usize,
+    relative_base: isize,
 }
 
-fn handle_add(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Vec<String>, current_pos: usize) -> usize {
-    assert!(opcode.param_3_mode == false, "Write location cannot be immediate");
-    assert!(result_pos < program.len(), "Index out of range!");
-    let operand_1 = if opcode.param_1_mode { a_pos } else { get_positional_param(a_pos, program) };
-    let operand_2 = if opcode.param_2_mode { b_pos } else { get_positional_param(b_pos, program) };
-    program[result_pos] = (operand_1 + operand_2).to_string();
-    current_pos + 4
+fn get_param_value(mode: ParameterMode, param: i32, program: &Program) -> i32 {
+    match mode {
+        ParameterMode::Immediate => param,
+        ParameterMode::Position => {
+            assert!((param as usize) < program.text.len(), "Index {} out of program range!", param);
+            program.text[param as usize].trim().parse().unwrap()
+        }
+        ParameterMode::Relative => {
+            let pos = (param as isize + program.relative_base) as usize;
+            assert!(pos < program.text.len(), "Index {} out of program range!", param);
+            program.text[pos].trim().parse().unwrap()
+        }
+    }
 }
 
-fn handle_mult(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Vec<String>,
-               current_pos: usize) -> usize {
-    assert!(opcode.param_3_mode == false, "Write location cannot be immediate");
-    assert!(result_pos < program.len(), "Index out of range!");
-    let operand_1 = if opcode.param_1_mode { a_pos } else { get_positional_param(a_pos, program) };
-    let operand_2 = if opcode.param_2_mode { b_pos } else { get_positional_param(b_pos, program) };
-    program[result_pos] = (operand_1 * operand_2).to_string();
-    current_pos + 4
+fn handle_add(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Program) {
+    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
+    assert!(result_pos < program.text.len(), "Index out of range!");
+    let operand_1 = get_param_value(opcode.param_1_mode, a_pos, program);
+    let operand_2 = get_param_value(opcode.param_2_mode, b_pos, program);
+    program.text[result_pos] = (operand_1 + operand_2).to_string();
+    program.current_pos += 4;
 }
 
-fn handle_input(opcode: &Opcode, pos: usize, program: &mut Vec<String>, current_pos: usize,
-        input_fn: &mut impl FnMut() -> String) -> usize {
-    assert!(opcode.param_1_mode == false, "Write location cannot be immediate");
-    assert!(pos < program.len(), "Index out of range!");
+fn handle_mult(opcode: &Opcode, a_pos: i32, b_pos: i32, result_pos: usize, program: &mut Program) {
+    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
+    assert!(result_pos < program.text.len(), "Index out of range!");
+    let operand_1 = get_param_value(opcode.param_1_mode, a_pos, program);
+    let operand_2 = get_param_value(opcode.param_2_mode, b_pos, program);
+    program.text[result_pos] = (operand_1 * operand_2).to_string();
+    program.current_pos += 4;
+}
+
+fn handle_input(
+    opcode: &Opcode,
+    pos: usize,
+    program: &mut Program,
+    input_fn: &mut impl FnMut() -> String,
+) {
+    assert!(opcode.param_1_mode != ParameterMode::Immediate, "Write location cannot be immediate");
+    assert!(pos < program.text.len(), "Index out of range!");
     // parse() and to_string() to make sure we are getting a valid integer
-    program[pos] = input_fn().parse::<i32>().unwrap().to_string();
-    current_pos + 2
+    program.text[pos] = input_fn().parse::<i32>().unwrap().to_string();
+    program.current_pos += 2;
 }
 
-fn handle_output(opcode: &Opcode, param: i32, program: &mut Vec<String>, current_pos: usize,
-        output_fn: &mut impl FnMut(&str)) -> usize {
-    let param = if opcode.param_1_mode { param } else { get_positional_param(param, program) };
+fn handle_output(
+    opcode: &Opcode,
+    param: i32,
+    program: &mut Program,
+    output_fn: &mut impl FnMut(&str),
+) {
+    let param = get_param_value(opcode.param_1_mode, param, program);
     output_fn(&param.to_string());
-    current_pos + 2
+    program.current_pos += 2;
 }
 
-fn handle_jump_if_true(opcode: &Opcode, param: i32, pos: i32, program: &mut Vec<String>,
-                       current_pos: usize) -> usize {
-    let param = if opcode.param_1_mode { param } else { get_positional_param(param, program) };
-    let pos = if opcode.param_2_mode { pos } else { get_positional_param(pos, program) };
-    if param != 0 { pos as usize } else { current_pos + 3 }
+fn handle_jump_if_true(opcode: &Opcode, param: i32, pos: i32, program: &mut Program) {
+    let param = get_param_value(opcode.param_1_mode, param, program);
+    let pos = get_param_value(opcode.param_2_mode, pos, program);
+    if param != 0 {
+        program.current_pos = pos as usize;
+    } else {
+        program.current_pos += 3;
+    }
 }
 
-fn handle_jump_if_false(opcode: &Opcode, param: i32, pos: i32, program: &mut Vec<String>,
-                        current_pos: usize) -> usize {
-    let param = if opcode.param_1_mode { param } else { get_positional_param(param, program) };
-    let pos = if opcode.param_2_mode { pos } else { get_positional_param(pos, program) };
-    if param == 0 { pos as usize } else { current_pos + 3 }
+fn handle_jump_if_false(opcode: &Opcode, param: i32, pos: i32, program: &mut Program) {
+    let param = get_param_value(opcode.param_1_mode, param, program);
+    let pos = get_param_value(opcode.param_2_mode, pos, program);
+    if param == 0 {
+        program.current_pos = pos as usize;
+    } else {
+        program.current_pos += 3;
+    }
 }
 
-fn handle_less_than(opcode: &Opcode, param_1: i32, param_2: i32, result_pos: usize, program: &mut Vec<String>,
-                    current_pos: usize) -> usize {
-    assert!(opcode.param_3_mode == false, "Write location cannot be immediate");
-    assert!(result_pos < program.len(), "Index out of range!");
-    let param_1 = if opcode.param_1_mode { param_1 } else { get_positional_param(param_1, program) };
-    let param_2 = if opcode.param_2_mode { param_2 } else { get_positional_param(param_2, program) };
-    program[result_pos] = if param_1 < param_2 { "1".to_string() } else { "0".to_string() };
-    current_pos + 4
+fn handle_less_than(
+    opcode: &Opcode,
+    param_1: i32,
+    param_2: i32,
+    result_pos: usize,
+    program: &mut Program,
+) {
+    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
+    assert!(result_pos < program.text.len(), "Index out of range!");
+    let param_1 = get_param_value(opcode.param_1_mode, param_1, program);
+    let param_2 = get_param_value(opcode.param_2_mode, param_2, program);
+    program.text[result_pos] = if param_1 < param_2 {
+        "1".to_string()
+    } else {
+        "0".to_string()
+    };
+    program.current_pos += 4
 }
 
-fn handle_equals(opcode: &Opcode, param_1: i32, param_2: i32, result_pos: usize, program: &mut Vec<String>,
-                 current_pos: usize) -> usize {
-    assert!(opcode.param_3_mode == false, "Write location cannot be immediate");
-    assert!(result_pos < program.len(), "Index out of range!");
-    let param_1 = if opcode.param_1_mode { param_1 } else { get_positional_param(param_1, program) };
-    let param_2 = if opcode.param_2_mode { param_2 } else { get_positional_param(param_2, program) };
-    program[result_pos] = if param_1 == param_2 { "1".to_string() } else { "0".to_string() };
-    current_pos + 4
+fn handle_equals(
+    opcode: &Opcode,
+    param_1: i32,
+    param_2: i32,
+    result_pos: usize,
+    program: &mut Program,
+) {
+    assert!(opcode.param_3_mode != ParameterMode::Immediate, "Write location cannot be immediate");
+    assert!(result_pos < program.text.len(), "Index out of range!");
+    let param_1 = get_param_value(opcode.param_1_mode, param_1, program);
+    let param_2 = get_param_value(opcode.param_2_mode, param_2, program);
+    program.text[result_pos] = if param_1 == param_2 {
+        "1".to_string()
+    } else {
+        "0".to_string()
+    };
+    program.current_pos += 4
 }
 
 fn default_input() -> String {
@@ -117,50 +196,96 @@ fn default_output(output: &str) {
     println!("{}", output);
 }
 
-pub fn run(input: &mut Vec<String>) {
+pub fn run(input: Vec<String>) {
     run_with_custom_io(input, &mut default_input, &mut default_output);
 }
 
-pub fn run_with_custom_io(input: &mut Vec<String>, input_fn: &mut impl FnMut() -> String, output_fn: &mut impl FnMut(&str)) {
-    let mut pos: usize = 0;
+pub fn run_with_custom_io(
+    input: Vec<String>,
+    input_fn: &mut impl FnMut() -> String,
+    output_fn: &mut impl FnMut(&str),
+) {
+    let mut program = Program {
+        text: input,
+        ..Default::default()
+    };
     let mut iteration_num: u32 = 0;
-    while pos < input.len() {
-        let opcode = Opcode::from_string(&input[pos].trim());
+    loop {
+        let opcode = Opcode::from_string(&program.text[program.current_pos].trim());
         match opcode.code {
             1 => {
-                let params : Vec<String> = input[pos + 1..pos + 4].to_vec();
-                pos = handle_add(&opcode, params[0].parse().unwrap(), params[1].parse().unwrap(),
-                                 params[2].parse().unwrap(), input, pos);
-            },
+                let params: Vec<String> =
+                    program.text[program.current_pos + 1..program.current_pos + 4].to_vec();
+                handle_add(
+                    &opcode,
+                    params[0].parse().unwrap(),
+                    params[1].parse().unwrap(),
+                    params[2].parse().unwrap(),
+                    &mut program,
+                );
+            }
             2 => {
-                let params : Vec<String> = input[pos + 1..pos + 4].to_vec();
-                pos = handle_mult(&opcode, params[0].parse().unwrap(), params[1].parse().unwrap(), 
-                                  params[2].parse().unwrap(), input, pos);
-            },
+                let params: Vec<String> =
+                    program.text[program.current_pos + 1..program.current_pos + 4].to_vec();
+                handle_mult(
+                    &opcode,
+                    params[0].parse().unwrap(),
+                    params[1].parse().unwrap(),
+                    params[2].parse().unwrap(),
+                    &mut program,
+                );
+            }
             3 => {
-                pos = handle_input(&opcode, input[pos + 1].parse().unwrap(), input, pos, input_fn);
-            },
+                handle_input(
+                    &opcode,
+                    program.text[program.current_pos + 1].parse().unwrap(),
+                    &mut program,
+                    input_fn,
+                );
+            }
             4 => {
-                pos = handle_output(&opcode, input[pos + 1].parse().unwrap(), input, pos, output_fn);
-            },
+                handle_output(
+                    &opcode,
+                    program.text[program.current_pos + 1].parse().unwrap(),
+                    &mut program,
+                    output_fn,
+                );
+            }
             5 => {
-                pos = handle_jump_if_true(&opcode, input[pos + 1].parse().unwrap(), input[pos + 2].parse().unwrap(),
-                                          input, pos);
-            },
+                handle_jump_if_true(
+                    &opcode,
+                    program.text[program.current_pos + 1].parse().unwrap(),
+                    program.text[program.current_pos + 2].parse().unwrap(),
+                    &mut program,
+                );
+            }
             6 => {
-                pos = handle_jump_if_false(&opcode, input[pos + 1].parse().unwrap(), input[pos + 2].parse().unwrap(),
-                                           input, pos);
-            },
-            7 => {
-                pos = handle_less_than(&opcode, input[pos + 1].parse().unwrap(), input[pos + 2].parse().unwrap(),
-                                       input[pos + 3].parse().unwrap(), input, pos)
-            },
-            8 => {
-                pos = handle_equals(&opcode, input[pos + 1].parse().unwrap(), input[pos + 2].parse().unwrap(),
-                                    input[pos + 3].parse().unwrap(), input, pos)
-            },
+                handle_jump_if_false(
+                    &opcode,
+                    program.text[program.current_pos + 1].parse().unwrap(),
+                    program.text[program.current_pos + 2].parse().unwrap(),
+                    &mut program,
+                );
+            }
+            7 => handle_less_than(
+                &opcode,
+                program.text[program.current_pos + 1].parse().unwrap(),
+                program.text[program.current_pos + 2].parse().unwrap(),
+                program.text[program.current_pos + 3].parse().unwrap(),
+                &mut program,
+            ),
+            8 => handle_equals(
+                &opcode,
+                program.text[program.current_pos + 1].parse().unwrap(),
+                program.text[program.current_pos + 2].parse().unwrap(),
+                program.text[program.current_pos + 3].parse().unwrap(),
+                &mut program,
+            ),
             99 => return,
-            _ => panic!("Bad opcode {} Pos: {} Str: {} Iteration: {}!", opcode.code, pos, input[pos], iteration_num)
+            _ => panic!(
+                "Bad opcode {} Pos: {} Str: {} Iteration: {}!",
+                opcode.code, program.current_pos, program.text[program.current_pos], iteration_num
+            ),
         };
         iteration_num += 1;
     }
@@ -174,32 +299,32 @@ mod tests {
     fn test_full_code_parsed_successfully() {
         let opcode = Opcode::from_string("11101");
         assert_eq!(opcode.code, 1);
-        assert_eq!(opcode.param_1_mode, true);
-        assert_eq!(opcode.param_2_mode, true);
-        assert_eq!(opcode.param_3_mode, true);
+        assert_eq!(opcode.param_1_mode, ParameterMode::Immediate);
+        assert_eq!(opcode.param_2_mode, ParameterMode::Immediate);
+        assert_eq!(opcode.param_3_mode, ParameterMode::Immediate);
 
-        let opcode = Opcode::from_string("11002");
+        let opcode = Opcode::from_string("21002");
         assert_eq!(opcode.code, 2);
-        assert_eq!(opcode.param_1_mode, false);
-        assert_eq!(opcode.param_2_mode, true);
-        assert_eq!(opcode.param_3_mode, true);
+        assert_eq!(opcode.param_1_mode, ParameterMode::Position);
+        assert_eq!(opcode.param_2_mode, ParameterMode::Immediate);
+        assert_eq!(opcode.param_3_mode, ParameterMode::Relative);
     }
 
     #[test]
     fn test_leading_zero_suppression() {
         let opcode = Opcode::from_string("03");
         assert_eq!(opcode.code, 3);
-        assert_eq!(opcode.param_1_mode, false);
-        assert_eq!(opcode.param_2_mode, false);
-        assert_eq!(opcode.param_3_mode, false);
+        assert_eq!(opcode.param_1_mode, ParameterMode::Position);
+        assert_eq!(opcode.param_2_mode, ParameterMode::Position);
+        assert_eq!(opcode.param_3_mode, ParameterMode::Position);
     }
 
     #[test]
     fn test_single_digit() {
         let opcode = Opcode::from_string("3");
         assert_eq!(opcode.code, 3);
-        assert_eq!(opcode.param_1_mode, false);
-        assert_eq!(opcode.param_2_mode, false);
-        assert_eq!(opcode.param_3_mode, false);
+        assert_eq!(opcode.param_1_mode, ParameterMode::Position);
+        assert_eq!(opcode.param_2_mode, ParameterMode::Position);
+        assert_eq!(opcode.param_3_mode, ParameterMode::Position);
     }
 }

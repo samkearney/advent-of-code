@@ -4,16 +4,20 @@ extern crate permutohedron;
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
-use std::thread;
 use std::sync::mpsc;
+use std::thread;
 
-fn test_permutation(program: &Vec<String>, phase_settings: &mut[u32]) -> u32 {
+fn test_permutation(program: &Vec<String>, phase_settings: &mut [u32]) -> u32 {
     let mut recv_channels = Vec::new();
     let mut send_channels = Vec::new();
     for i in 0..5 {
         let (tx, rx) = mpsc::channel();
         recv_channels.push(rx);
-        if i == 4 { send_channels.insert(0, tx); } else { send_channels.push(tx); }
+        if i == 4 {
+            send_channels.insert(0, tx);
+        } else {
+            send_channels.push(tx);
+        }
     }
 
     let mut join_handles = Vec::new();
@@ -21,16 +25,17 @@ fn test_permutation(program: &Vec<String>, phase_settings: &mut[u32]) -> u32 {
     let (last_output_tx, last_output_rx) = mpsc::channel();
 
     // Special closure for the first amp
-    let mut program_copy = program.to_owned();
+    let program_copy = program.to_owned();
     let phase = phase_settings[0];
     let send_channel = send_channels.pop().unwrap();
     let recv_channel = recv_channels.pop().unwrap();
     join_handles.push(thread::spawn(move || {
         let mut gave_phase = false;
         let mut gave_ampl = false;
-        intcode_computer::run_with_custom_io(&mut program_copy,
+        intcode_computer::run_with_custom_io(
+            program_copy,
             &mut || {
-                if !gave_phase { 
+                if !gave_phase {
                     // Feed the phase to each amp
                     gave_phase = true;
                     phase.to_string()
@@ -42,24 +47,25 @@ fn test_permutation(program: &Vec<String>, phase_settings: &mut[u32]) -> u32 {
                     recv_channel.recv().unwrap()
                 }
             },
-            &mut |out_str| { 
+            &mut |out_str| {
                 send_channel.send(out_str.to_string()).unwrap();
-            }
+            },
         );
         last_output_tx.send(recv_channel.recv().unwrap()).unwrap();
     }));
 
     // Closures for the other 4 amps
     for index in 1..5 {
-        let mut program_copy = program.to_owned();
+        let program_copy = program.to_owned();
         let phase = phase_settings[index];
         let send_channel = send_channels.pop().unwrap();
         let recv_channel = recv_channels.pop().unwrap();
         join_handles.push(thread::spawn(move || {
             let mut gave_phase = false;
-            intcode_computer::run_with_custom_io(&mut program_copy,
+            intcode_computer::run_with_custom_io(
+                program_copy,
                 &mut || {
-                    if !gave_phase { 
+                    if !gave_phase {
                         // Feed the phase to each amp
                         gave_phase = true;
                         phase.to_string()
@@ -67,9 +73,9 @@ fn test_permutation(program: &Vec<String>, phase_settings: &mut[u32]) -> u32 {
                         recv_channel.recv().unwrap()
                     }
                 },
-                &mut |out_str| { 
+                &mut |out_str| {
                     send_channel.send(out_str.to_string()).unwrap();
-                }
+                },
             );
         }));
     }
@@ -91,7 +97,7 @@ fn main() {
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).unwrap();
-    let original_program : Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
+    let original_program: Vec<String> = contents.split(',').map(|s| s.to_string()).collect();
 
     let mut largest_signal = 0;
 
